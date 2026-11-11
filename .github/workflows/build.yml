@@ -1,0 +1,36 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            output: mc-server-manager.exe
+            artifact: windows-amd64
+          - os: ubuntu-latest
+            output: mc-server-manager
+            artifact: linux-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go build -trimpath -o dist/${{ matrix.output }} .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mc-server-manager-${{ matrix.artifact }}
+          path: dist/${{ matrix.output }}

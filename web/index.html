@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MC Server Manager</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<aside class="sidebar">
+ <a class="brand" href="/"><span class="brand-icon">M</span><span>MC SERVER<br><strong>MANAGER</strong></span></a>
+ <div class="nav-caption">本地开服工作台</div>
+ <nav><button class="nav active" data-tab="worlds">▦ <span>我的服务器</span><span id="worldCount" class="count">0</span></button><button class="nav" data-tab="versions">⇩ <span>服务端版本</span></button><button class="nav" data-tab="console">›_ <span>服务器后台</span><i id="navDot"></i></button><button class="nav" data-tab="settings">⚙ <span>开服设置</span></button></nav>
+ <div class="sidebar-bottom"><span class="local-dot"></span> 仅在本机管理 <small>原版 · JAVA EDITION</small><button id="quit" class="text-button">退出管理器</button></div>
+</aside>
+<main>
+ <header><div class="breadcrumb">工作空间 <span>/</span> <b id="pageCrumb">我的服务器</b></div><span id="connection" class="connection">正在连接…</span></header>
+ <section id="worlds" class="page active">
+  <div class="heading"><div><div class="eyebrow">YOUR WORLDS, READY TO PLAY</div><h1>我的服务器</h1><p>选一张地图，开启下一段冒险。</p></div><button id="importButton" class="primary">＋ 导入地图 ZIP</button></div>
+  <div class="toolbar"><label class="search">⌕ <input id="worldSearch" placeholder="搜索服务器名称、简介或版本"></label><span class="subtle">每个实例独立保存地图和进度</span></div>
+  <div id="dropzone" tabindex="0" role="button" aria-label="导入地图 ZIP"><span class="drop-icon">⇧</span><div><strong>把地图 ZIP 拖到这里</strong><p>自动查找存档、读取图片和版本，确认后即可开服</p></div><span class="drop-format">.ZIP</span></div>
+  <div id="worldGrid" class="grid"></div>
+  <div id="empty" class="empty" hidden><span>▧</span><h2>你的第一台服务器，从一张地图开始</h2><p>拖入地图 ZIP，或点击右上角导入。已有存档也可以压缩后导入。</p></div>
+ </section>
+ <section id="versions" class="page">
+  <div class="heading"><div><div class="eyebrow">THE RIGHT VERSION, EVERY TIME</div><h1>服务端版本</h1><p>从 Mojang 官方下载，也可以导入你已有的服务端。</p></div><button id="jarButton" class="secondary">＋ 导入服务端 JAR</button></div>
+  <div class="panel"><h2>已安装</h2><div id="installedVersions" class="chips"></div></div>
+  <div class="toolbar"><label class="search">⌕ <input id="versionSearch" placeholder="搜索版本，例如 26.3"></label><label class="inline"><input id="snapshots" type="checkbox"> 包含快照 / 预发布 / 候选版</label><button id="refreshVersions" class="secondary">刷新官方列表</button></div>
+  <p id="versionHint" class="subtle">打开此页面时获取官方列表。</p><div id="downloadTasks"></div><div id="versionList" class="version-list"></div>
+ </section>
+ <section id="console" class="page">
+  <div class="heading"><div><div class="eyebrow">KEEP EVERYTHING UNDER CONTROL</div><h1>服务器后台</h1><p id="consoleTitle">尚未启动服务器</p></div><button id="stopButton" class="danger" disabled>■ 保存并停止</button></div>
+  <div class="console-panel"><div class="console-bar"><span id="serverState">已停止</span><span id="pid"></span></div><pre id="logs" aria-label="服务器实时日志">等待启动服务器…</pre><form id="commandForm"><span>›</span><input id="command" autocomplete="off" placeholder="输入后台命令，例如 list 或 op 玩家名（无需 /）" aria-label="后台命令"><button class="primary" id="sendCommand" disabled>发送 ↵</button></form></div>
+  <p class="subtle">关闭网页不会停止服务器。请使用“保存并停止”正常关服，退出管理器也会先等待存档保存。</p>
+ </section>
+ <section id="settings" class="page">
+  <div class="heading"><div><div class="eyebrow">SIMPLE DEFAULTS, LESS SETUP</div><h1>开服设置</h1><p>所有实例启动时应用这些默认设置，运行中的服务器下次启动生效。</p></div></div>
+  <form id="settingsForm" class="panel settings-form">
+   <label>Java 程序路径<input id="javaPath" required placeholder="例如 C:\Program Files\Java\bin\java.exe"><small>自动尝试使用 Minecraft 自带 Java。不同服务端可能需要不同 Java 版本，可在启动前修改。</small></label>
+   <div class="form-row"><label>最大内存（GB）<input id="memory" type="number" min="1" max="64" required></label><label>服务器端口<input id="serverPort" type="number" min="1024" max="65535" required></label></div>
+   <label>自动授权管理员列表<textarea id="operators" rows="4" placeholder="每行一个游戏名，可以留空"></textarea><small>开服时按此列表同步 OP，留空表示不自动设置管理员。修改后下次启动生效；后台临时授权的 OP 下次启动也以此列表为准。</small></label>
+   <div class="defaults"><span>正版验证 <b>关闭</b></span><span>命令方块 <b>开启</b></span><span>允许飞行 <b>开启</b></span><span>白名单 <b>关闭</b></span></div>
+   <p class="subtle">允许飞行不会自动赋予飞行能力。第一版同时运行一个实例，支持原版 Java 服务端；模组和插件服将在后续版本加入。</p>
+   <label class="inline"><input id="eula" type="checkbox"> 我已阅读并同意 <a href="https://www.minecraft.net/eula" target="_blank" rel="noreferrer">Minecraft EULA</a></label>
+   <div class="settings-footer"><button class="primary">保存设置</button><small id="dataPath"></small></div>
+  </form>
+ </section>
+</main>
+<input id="zipInput" type="file" accept=".zip" hidden><input id="jarInput" type="file" accept=".jar" hidden><input id="coverInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+<dialog id="importDialog"><form id="importForm"><div class="dialog-heading"><h2>导入地图，创建服务器</h2><button type="button" class="close" data-close="importDialog">×</button></div><label>选择地图存档<select id="candidate"></select></label><label>服务器名称<input id="importName" required maxlength="100"></label><label>地图简介<textarea id="importDescription" rows="3" maxlength="1000" placeholder="这张地图有什么好玩的？"></textarea></label><label>需要的 Minecraft 版本<input id="importVersion" required placeholder="例如 26.3 或 26.3-rc-3"></label><p id="detectHint" class="subtle"></p><p class="note">请确认版本。存档最后保存的版本不一定是地图作者要求的版本，Mod 地图暂不支持。</p><div class="dialog-footer"><button type="button" class="secondary" data-close="importDialog">取消</button><button class="primary">确认导入</button></div></form></dialog>
+<dialog id="editDialog"><form id="editForm"><div class="dialog-heading"><h2>编辑服务器</h2><button type="button" class="close" data-close="editDialog">×</button></div><input id="editId" type="hidden"><label>名称<input id="editName" required maxlength="100"></label><label>简介<textarea id="editDescription" rows="3" maxlength="1000"></textarea></label><label>游戏版本<input id="editVersion" required></label><p class="note">更换版本前建议先备份。较新版本保存过的地图，不建议降级运行。</p><button type="button" id="changeCover" class="secondary">更换封面图片</button><div class="dialog-footer"><button type="button" class="secondary" data-close="editDialog">取消</button><button class="primary">保存</button></div></form></dialog>
+<div id="busy" hidden><div class="busy-card"><div class="spinner"></div><strong id="busyText">正在处理…</strong><progress id="uploadProgress" max="100"></progress><small>请保持页面打开</small></div></div>
+<div id="toast" role="status" hidden></div>
+</body></html>

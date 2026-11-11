@@ -1,8 +1,8 @@
 package main
 
 import (
+	winplatform "github.com/Endergarten/mc-server-manager/internal/platform/windows"
 	"os/exec"
-	"syscall"
 )
 
-func hideWindow(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} }
+func hideWindow(cmd *exec.Cmd) { winplatform.HideProcess(cmd) }

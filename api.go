@@ -15,12 +15,16 @@ import (
 func (a *App) routes(m *http.ServeMux) {
 	m.HandleFunc("/api/state", a.state)
 	m.HandleFunc("/api/settings", a.settings)
+	m.HandleFunc("/api/java/scan", a.scanJava)
+	m.HandleFunc("/api/java/browse", a.browseJava)
+	m.HandleFunc("/api/java/requirement", a.javaRequirementAPI)
 	m.HandleFunc("/api/import/inspect", a.inspect)
 	m.HandleFunc("/api/import/commit", a.commit)
 	m.HandleFunc("/api/import/cancel", a.cancelImport)
 	m.HandleFunc("/api/world/edit", a.editWorld)
 	m.HandleFunc("/api/world/start", a.start)
 	m.HandleFunc("/api/world/backup", a.backup)
+	m.HandleFunc("/api/world/delete", a.deleteWorldAPI)
 	m.HandleFunc("/api/world/icon", a.icon)
 	m.HandleFunc("/api/server/stop", a.stop)
 	m.HandleFunc("/api/server/command", a.sendCommand)
@@ -61,7 +65,7 @@ func (a *App) state(w http.ResponseWriter, r *http.Request) {
 		tasks = append(tasks, *t)
 	}
 	sort.Slice(tasks, func(i, j int) bool { return tasks[i].Version < tasks[j].Version })
-	respond(w, map[string]any{"token": a.token, "worlds": a.db.Worlds, "settings": a.db.Settings, "server": a.statusLocked(), "logs": a.logs, "installed": installed, "tasks": tasks, "dataPath": a.root})
+	respond(w, map[string]any{"token": a.token, "worlds": a.db.Worlds, "settings": a.db.Settings, "server": a.statusLocked(), "logs": a.logs, "installed": installed, "tasks": tasks, "dataPath": a.root, "desktop": a.desktop, "javas": a.javas, "javaScanning": a.javaScanning, "javaScanError": a.javaScanError})
 }
 func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 	if !method(w, r, "POST") {
@@ -71,6 +75,9 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 	if e := decode(w, r, &s); e != nil {
 		fail(w, e)
 		return
+	}
+	if s.ServerOptions == nil {
+		s.ServerOptions = defaultServerOptions()
 	}
 	if e := validateSettings(s); e != nil {
 		fail(w, e)
@@ -131,28 +138,40 @@ func (a *App) inspect(w http.ResponseWriter, r *http.Request) {
 		fail(w, fmt.Errorf("请选择地图 ZIP 文件"))
 		return
 	}
-	id := newID()
-	dir := filepath.Join(a.root, "staging", id, "extracted")
-	if e = os.MkdirAll(dir, 0755); e != nil {
+	stage, e := a.inspectMapPath(file)
+	if e != nil {
 		fail(w, e)
 		return
+	}
+	for i := range stage.Candidates {
+		if stage.Candidates[i].Root == "." && strings.HasPrefix(stage.Candidates[i].Name, "upload-") {
+			stage.Candidates[i].Name = strings.TrimSuffix(name, filepath.Ext(name))
+		}
+	}
+	respond(w, stage)
+}
+func (a *App) inspectMapPath(file string) (*Stage, error) {
+	if !strings.EqualFold(filepath.Ext(file), ".zip") && !strings.HasPrefix(filepath.Base(file), "upload-") {
+		return nil, fmt.Errorf("请选择地图 ZIP 文件")
+	}
+	if s, e := os.Stat(file); e != nil || s.IsDir() || s.Size() > 2<<30 {
+		return nil, fmt.Errorf("地图 ZIP 不存在或超过 2 GB")
+	}
+	id := newID()
+	dir := filepath.Join(a.root, "staging", id, "extracted")
+	if e := os.MkdirAll(dir, 0755); e != nil {
+		return nil, e
 	}
 	candidates, e := extractMap(file, dir)
 	if e != nil {
 		os.RemoveAll(filepath.Dir(dir))
-		fail(w, e)
-		return
-	}
-	for i := range candidates {
-		if candidates[i].Root == "." && strings.HasPrefix(candidates[i].Name, "upload-") {
-			candidates[i].Name = strings.TrimSuffix(name, filepath.Ext(name))
-		}
+		return nil, e
 	}
 	stage := &Stage{ID: id, Candidates: candidates}
 	a.mu.Lock()
 	a.stages[id] = stage
 	a.mu.Unlock()
-	respond(w, stage)
+	return stage, nil
 }
 func (a *App) commit(w http.ResponseWriter, r *http.Request) {
 	if !method(w, r, "POST") {

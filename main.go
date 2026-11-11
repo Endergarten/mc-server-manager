@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-//go:embed web/*
+//go:embed frontend/windows/*
 var webFiles embed.FS
 
 func main() {
@@ -30,10 +30,18 @@ func main() {
 	data := flag.String("data", filepath.Join(filepath.Dir(exe), "data"), "地图和配置目录")
 	port := flag.Int("port", 18180, "本机管理页面端口")
 	noBrowser := flag.Bool("no-browser", false, "不自动打开浏览器")
+	webMode := flag.Bool("web", false, "使用兼容网页模式")
 	flag.Parse()
 	app, err := newApp(*data)
 	if err != nil {
 		log.Fatal(err)
+	}
+	app.startJavaScan()
+	if desktopAvailable && !*webMode && !*noBrowser {
+		if err = runDesktop(app); err != nil {
+			log.Fatal(err)
+		}
+		return
 	}
 	listener, err := net.Listen("tcp4", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
@@ -45,10 +53,7 @@ func main() {
 		log.Fatal(err)
 	}
 	app.token = hex.EncodeToString(b)
-	mux := http.NewServeMux()
-	app.routes(mux)
-	static, _ := fs.Sub(webFiles, "web")
-	mux.Handle("/", http.FileServer(http.FS(static)))
+	mux := app.handler()
 	server := &http.Server{Handler: app.guard(mux), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	app.shutdown = func() {
 		app.mu.Lock()
@@ -81,6 +86,14 @@ func main() {
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func (a *App) handler() http.Handler {
+	mux := http.NewServeMux()
+	a.routes(mux)
+	static, _ := fs.Sub(webFiles, "frontend/windows")
+	mux.Handle("/", http.FileServer(http.FS(static)))
+	return mux
 }
 
 func openBrowser(address string) {

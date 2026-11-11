@@ -24,12 +24,31 @@ type World struct {
 	Engine      string `json:"engine"`
 }
 type Settings struct {
-	Java      string   `json:"java"`
-	Memory    int      `json:"memory"`
-	Port      int      `json:"port"`
-	Operators []string `json:"operators"`
-	EULA      bool     `json:"eula"`
+	Java          string         `json:"java"`
+	Memory        int            `json:"memory"`
+	Port          int            `json:"port"`
+	Operators     []string       `json:"operators"`
+	EULA          bool           `json:"eula"`
+	JavaMode      string         `json:"javaMode"`
+	JavaRoots     []string       `json:"javaRoots"`
+	ServerOptions *ServerOptions `json:"serverOptions"`
 }
+type ServerOptions struct {
+	OnlineMode    bool `json:"onlineMode"`
+	CommandBlocks bool `json:"commandBlocks"`
+	AllowFlight   bool `json:"allowFlight"`
+}
+
+func defaultServerOptions() *ServerOptions {
+	return &ServerOptions{OnlineMode: false, CommandBlocks: true, AllowFlight: true}
+}
+func (s Settings) launchOptions() ServerOptions {
+	if s.ServerOptions == nil {
+		return *defaultServerOptions()
+	}
+	return *s.ServerOptions
+}
+
 type Database struct {
 	Worlds   []World  `json:"worlds"`
 	Settings Settings `json:"settings"`
@@ -46,6 +65,12 @@ type App struct {
 	manifestAt           time.Time
 	shutdown             func()
 	closing              bool
+	javas                []JavaRuntime
+	javaScanning         bool
+	javaScanError        string
+	javaRules            JavaRules
+	pickNative           func(string) (string, error)
+	desktop              bool
 }
 
 var validVersion = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
@@ -63,7 +88,7 @@ func newApp(root string) (*App, error) {
 		}
 	}
 	// Staging is transient; leave previous failed imports on disk rather than deleting unknown data.
-	a.db = Database{Worlds: []World{}, Settings: Settings{Java: detectJava(), Memory: 2, Port: 25565, Operators: []string{}}}
+	a.db = Database{Worlds: []World{}, Settings: Settings{Java: detectJava(), JavaMode: "auto", JavaRoots: []string{}, Memory: 2, Port: 25565, Operators: []string{}}}
 	b, err := os.ReadFile(filepath.Join(root, "library.json"))
 	if err == nil {
 		if err = json.Unmarshal(b, &a.db); err != nil {
@@ -87,20 +112,25 @@ func newApp(root string) (*App, error) {
 	if a.db.Settings.Operators == nil {
 		a.db.Settings.Operators = []string{}
 	}
+	if a.db.Settings.ServerOptions == nil {
+		a.db.Settings.ServerOptions = defaultServerOptions()
+	}
 	for i := range a.db.Worlds {
 		if a.db.Worlds[i].Engine == "" {
 			a.db.Worlds[i].Engine = "vanilla"
 		}
 	}
+	if err = a.initJava(); err != nil {
+		return nil, err
+	}
 	return a, nil
 }
 func detectJava() string {
-	p := filepath.Join(os.Getenv("APPDATA"), ".minecraft", "runtime", "java-runtime-epsilon", "bin", "java.exe")
-	if _, e := os.Stat(p); e == nil {
+	if p := platformDefaultJava(); p != "" {
 		return p
 	}
 	if p := os.Getenv("JAVA_HOME"); p != "" {
-		for _, n := range []string{"java.exe", "java"} {
+		for _, n := range []string{javaExecutable()} {
 			f := filepath.Join(p, "bin", n)
 			if _, e := os.Stat(f); e == nil {
 				return f
@@ -164,8 +194,14 @@ func offlineUUID(name string) string {
 	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
 func validateSettings(s Settings) error {
-	if strings.TrimSpace(s.Java) == "" {
+	if s.JavaMode != "" && s.JavaMode != "auto" && s.JavaMode != "manual" {
+		return fmt.Errorf("Java 选择模式无效")
+	}
+	if s.JavaMode != "auto" && strings.TrimSpace(s.Java) == "" {
 		return fmt.Errorf("请填写 Java 路径")
+	}
+	if len(s.JavaRoots) > 32 {
+		return fmt.Errorf("最多添加 32 个 Java 搜索目录")
 	}
 	if s.Memory < 1 || s.Memory > 64 {
 		return fmt.Errorf("最大内存应为 1–64 GB")

@@ -1,0 +1,10 @@
+{
+  "overrides": [],
+  "fallbacks": [
+    {"min":"26.1","preferred":25,"allowed":[25],"note":"优先以官方 javaVersion 或服务端 version.json 为准"},
+    {"min":"1.20.5","before":"26.1","preferred":21,"allowed":[21]},
+    {"min":"1.18","before":"1.20.5","preferred":17,"allowed":[17]},
+    {"min":"1.17","before":"1.18","preferred":16,"allowed":[16]},
+    {"min":"1.0","before":"1.17","preferred":8,"allowed":[8]}
+  ]
+}

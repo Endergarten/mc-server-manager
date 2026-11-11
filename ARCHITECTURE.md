@@ -1,41 +1,35 @@
-# 实现结构与后续扩展
+# 模块与扩展边界
 
-## 当前实现
+当前正式发行目标只有 Windows 10 / 11。Windows 界面位于 `frontend/windows/`，已经独立重写为服务器列表、属性面板和底部控制台，不复用早期网页卡片。
 
-纯 Go 标准库 HTTP 服务，内嵌静态页面，通过 JSON API 管理本机实例。不依赖前端构建工具或数据库。
+## 通用逻辑
 
-| 文件 | 职责 |
-| --- | --- |
-| `main.go` | 监听本机、网页资源、请求访问检查、正常退出 |
-| `store.go` | 实例库、设置、原子文件写入、离线 UUID |
-| `archive.go` | ZIP 安全解压、NBT 版本读取、JAR 内部版本识别 |
-| `versions.go` | Mojang 版本列表、下载任务、进度与文件校验 |
-| `server.go` | 准备配置、启动子进程、日志、stdin 命令、等待 stop |
-| `api.go` | 页面操作 API、封面和停止状态备份 |
-| `web/` | 无框架 HTML / CSS / JavaScript 界面 |
+`store.go` 管理实例、设置与原子保存；`archive.go` 处理 ZIP、NBT 和 JAR 识别；`versions.go` 处理官方元信息及下载；`java.go` 负责 Java 描述、缓存、通用扫描和兼容匹配；`server.go` 管理进程、日志、后台命令和正常关服。`api.go`、`java_api.go` 为界面提供本地操作。
 
-数据结构中的 `World` 是一个持有地图的开服实例，而不是只读地图模板；实例持有自己的存档和配置，并引用共用版本库。保留 `engine` 字段，当前唯一可运行类型为 `vanilla`。未知类型会被明确拒绝，不会误当作原版运行。
+`World` 代表持有独立地图与配置的开服实例，引用共用的版本库。`engine` 当前仅支持 vanilla，未知类型明确拒绝启动。
 
-启动时验证实例存在、用户已同意 EULA、JAR 内部版本正确、端口未占用；应用默认配置和 OP 后，以 `exec.Command` 启动 Java，不拼接 shell 命令。日志写入磁盘并保留最近 800 行供页面轮询；保留 stdin 管道，后台命令直接写入 Java 进程。只有看到准备完成日志才显示运行中。
+## 桌面与平台模块
 
-`stop` 进入“正在保存并停止”，等待子进程真实退出后才允许再次启动。退出管理器先禁止新的启动请求，等待最多 60 秒；超时保留管理器以便继续观察，不强杀服务器。
+`internal/desktop` 不依赖开服核心类型，通过 HTTP Handler、运行状态、正常停止、文件浏览和地图拖入回调连接。默认桌面使用 Wails 内部资源处理，不开放独立 HTTP 端口。
 
-## 加入模组服、插件服时
+平台相关代码放在 `internal/platform/windows`：Java 注册表与安装位置、WebView2、窗口配置、Java 子进程隐藏。根目录 `*_windows.go` 只保留薄转接；macOS 和 Linux 预留目录，不发布未测试的桌面包。
 
-不要仅用一个不同的 JAR 替换原版。建议把当前原版逻辑提取为一个服务端类型适配器，统一暴露版本列表、安装校验和启动计划三个能力：
+`frontend/windows` 是 Windows 风格界面模块，Go embed 直接嵌入，不需要 NPM。`scripts/windows` 是 Windows 打包模块。桌面构建使用 `desktop,production,wv2runtime.embed` 标签；默认测试不引入图形宿主，便于验证可移植核心。网页兼容模式仅保留用于开发测试。
 
-```go
-type ServerEngine interface {
-    Versions(context.Context) ([]EngineVersion, error)
-    Install(context.Context, InstallRequest) (InstalledServer, error)
-    LaunchPlan(Instance, InstalledServer) (LaunchSpec, error)
-}
-```
+## Java 发现与选择
 
-上面的接口是后续设计示意，当前代码尚未实现。启动、日志、后台命令、备份和页面状态可以继续共用，避免对每种服务端重写一套管理逻辑。
+后台搜索常见位置，读取 release 文件，Windows 可解析 PE 架构，必要时使用带超时的 Java 版本命令。浏览补充的 Java 或文件夹会持久记录。
 
-新增实例信息应分别保存：游戏版本、服务端类型、加载器版本、每实例 Java 及启动参数。Fabric 有独立加载器版本，Forge / NeoForge 安装后可能需要参数文件而不是简单的 `java -jar`；不能把安装器当服务端直接执行。
+匹配顺序为用户覆盖 → 官方元信息 → JAR 内 version.json → 正式版兼容表。只从 allowed 中选择，优先 preferred，再选择新补丁版本。未知快照不按名字猜测；没有兼容 Java 则提示补充。规则保存于可编辑的 java-rules.json，启动时重读。
 
-整合包导入应先识别格式和清单（如 Modrinth `.mrpack`），展示需要下载的文件及服务端侧兼容情况，安装到独立的暂存目录，校验依赖后再完成实例创建。不得自动执行整合包中附带的任意脚本。插件服还应检查插件支持的服务端和游戏版本。
+## 生命周期
 
-`servers/` 未来按类型、游戏版本、加载器版本划分缓存；`instances/` 保持实例独立，`mods/`、`plugins/`、`config/` 随实例保存。更新前先创建完整备份，再安装替换，失败时回滚。
+Java 命令参数直接交给 exec.Command，不拼接 shell。保留 stdin，支持后台命令。只有准备完成日志出现才显示运行；stop 后等待进程真正退出才能再次启动。
+
+关闭桌面窗口时确认是否保存停止；用户取消则保留，确认后正常 stop 并等待。超时也不会强杀。兼容 HTTP 模式继续校验 Host / Origin / 写令牌。
+
+## 后续类型
+
+Fabric、Forge、NeoForge、Paper 应分别实现版本列表、安装校验和启动计划适配器，共用日志、命令和生命周期。游戏版本、服务端类型、加载器版本分开记录，不能将安装器直接当服务端运行。
+
+整合包先解析清单并核对服务端依赖，暂存下载校验后创建实例，不自动执行压缩包中的任意脚本。mods、plugins、config 跟随实例保存，更新前备份。

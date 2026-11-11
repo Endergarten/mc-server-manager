@@ -15,15 +15,16 @@ import (
 )
 
 type Run struct {
-	WorldID string `json:"worldId"`
-	State   string `json:"state"`
-	PID     int    `json:"pid"`
-	Error   string `json:"error,omitempty"`
-	cmd     *exec.Cmd
-	input   io.WriteCloser
-	done    chan struct{}
-	writeMu sync.Mutex
-	file    *os.File
+	WorldID         string `json:"worldId"`
+	State           string `json:"state"`
+	PID             int    `json:"pid"`
+	Error           string `json:"error,omitempty"`
+	cmd             *exec.Cmd
+	input           io.WriteCloser
+	done            chan struct{}
+	writeMu         sync.Mutex
+	file            *os.File
+	onlineOperators []string
 }
 type RunStatus struct {
 	WorldID string `json:"worldId"`
@@ -87,6 +88,19 @@ func (a *App) startWorld(id string) error {
 		return e
 	}
 	java := s.Java
+	javaDescription := "手动指定 Java"
+	if s.JavaMode == "auto" {
+		req, e := a.javaRequirement(world.Version)
+		if e != nil {
+			return e
+		}
+		chosen, e := chooseJava(a.javas, req)
+		if e != nil {
+			return e
+		}
+		java = chosen.Path
+		javaDescription = fmt.Sprintf("自动选择 Java %s · %s · %s", chosen.Version, req.Source, chosen.Path)
+	}
 	cmd := exec.Command(java, "-Xms512M", fmt.Sprintf("-Xmx%dG", s.Memory), "-jar", a.serverJar(world.Version), "nogui")
 	cmd.Dir = dir
 	hideWindow(cmd)
@@ -100,6 +114,9 @@ func (a *App) startWorld(id string) error {
 		return e
 	}
 	run := &Run{WorldID: id, State: "starting", cmd: cmd, input: input, done: make(chan struct{}), file: file}
+	if s.launchOptions().OnlineMode {
+		run.onlineOperators = append([]string{}, s.Operators...)
+	}
 	output := &lineWriter{a: a, run: run}
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -112,6 +129,7 @@ func (a *App) startWorld(id string) error {
 	a.run = run
 	a.logs = []string{}
 	a.addLogLocked("正在启动 " + world.Name + " / Minecraft " + world.Version)
+	a.addLogLocked(javaDescription)
 	go func() {
 		err := cmd.Wait()
 		output.flush()
@@ -142,7 +160,8 @@ func prepareServer(dir string, s Settings) error {
 	if e != nil && !os.IsNotExist(e) {
 		return e
 	}
-	values := map[string]string{"level-name": "world", "online-mode": "false", "enable-command-block": "true", "allow-flight": "true", "white-list": "false", "enforce-whitelist": "false", "server-port": strconv.Itoa(s.Port)}
+	opts := s.launchOptions()
+	values := map[string]string{"level-name": "world", "online-mode": strconv.FormatBool(opts.OnlineMode), "enable-command-block": strconv.FormatBool(opts.CommandBlocks), "allow-flight": strconv.FormatBool(opts.AllowFlight), "white-list": "false", "enforce-whitelist": "false", "server-port": strconv.Itoa(s.Port)}
 	text := patchProperties(string(old), values)
 	if e = atomicWrite(path, []byte(text)); e != nil {
 		return e
@@ -164,7 +183,9 @@ func prepareServer(dir string, s Settings) error {
 		return e
 	}
 	for _, name := range s.Operators {
-		ops = append(ops, map[string]any{"uuid": offlineUUID(name), "name": name, "level": 4, "bypassesPlayerLimit": true})
+		if !opts.OnlineMode {
+			ops = append(ops, map[string]any{"uuid": offlineUUID(name), "name": name, "level": 4, "bypassesPlayerLimit": true})
+		}
 	}
 	return atomicJSON(opsPath, ops)
 }
@@ -227,6 +248,30 @@ func (l *lineWriter) line(line string) {
 	l.a.addLogLocked(line)
 	if strings.Contains(line, "Done (") && l.run.State == "starting" {
 		l.run.State = "running"
+		if len(l.run.onlineOperators) > 0 {
+			go l.a.grantOnlineOperators(l.run)
+		}
+	}
+}
+
+// Let the official server resolve online player identities. Offline UUIDs must
+// never be reused when authentication is enabled.
+func (a *App) grantOnlineOperators(run *Run) {
+	for _, name := range run.onlineOperators {
+		a.mu.Lock()
+		if a.run != run || run.State != "running" {
+			a.mu.Unlock()
+			return
+		}
+		a.addLogLocked("> op " + name)
+		a.mu.Unlock()
+		run.writeMu.Lock()
+		_, e := fmt.Fprintln(run.input, "op "+name)
+		run.writeMu.Unlock()
+		if e != nil {
+			a.addLog("自动授权管理员失败：" + e.Error())
+			return
+		}
 	}
 }
 func (l *lineWriter) flush() {

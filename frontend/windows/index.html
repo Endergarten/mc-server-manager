@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MC Server Manager</title>
+  <link rel="stylesheet" href="/desktop.css">
+  <script src="/desktop.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <nav class="navigation" aria-label="主导航">
+      <div class="app-name"><span class="app-mark">M</span><strong>MC Server Manager</strong></div>
+      <button class="nav-item selected" data-view="servers"><span data-icon="maps"></span>地图列表 <small id="server-count">0</small></button>
+      <button class="nav-item" data-view="versions"><span data-icon="download"></span>服务端版本</button>
+      <div class="nav-divider"></div>
+      <button class="nav-item" data-view="java"><span data-icon="java"></span>Java 环境</button>
+      <button class="nav-item" data-view="settings"><span data-icon="settings"></span>设置</button>
+    </nav>
+
+    <main>
+      <section id="view-servers" class="view selected">
+        <div class="command-bar">
+          <h1>地图</h1>
+          <input id="filter-servers" class="toolbar-search" type="search" placeholder="搜索地图" aria-label="搜索地图">
+          <button id="import-map"><span data-icon="add"></span>导入地图</button>
+        </div>
+        <div class="workspace-tabs" role="tablist"><button role="tab" aria-selected="true" data-workspace-tab="maps" class="tab-selected">地图</button><button role="tab" aria-selected="false" data-workspace-tab="console">控制台</button></div>
+        <div class="server-workspace" id="maps-panel" role="tabpanel">
+          <div class="server-browser" id="map-drop-target">
+            <div class="pane-caption"><span id="server-summary">0 张地图</span></div>
+            <div class="table-container">
+              <div id="server-rows" class="map-list" role="listbox" aria-label="地图列表"></div>
+              <div id="servers-empty" class="empty-state"><span>▤</span><strong>还没有地图</strong><p>导入地图 ZIP 即可开服。<br>也可以将 ZIP 拖到这里。</p><button id="empty-import">导入地图…</button></div>
+            </div>
+            <div class="drop-hint"><span data-icon="upload"></span>拖入地图 ZIP 即可添加</div>
+          </div>
+          <aside class="properties-pane" aria-label="地图信息">
+            <div id="properties-empty" class="muted properties-empty">选择一张地图查看详细信息。</div>
+            <div id="properties" hidden>
+              <div class="map-preview" id="selected-cover">M</div>
+              <div class="instance-heading"><strong id="selected-name"></strong><small id="selected-state"></small></div>
+              <p id="selected-description" class="map-description"></p>
+              <div class="map-launch-actions"><button id="start-server" class="accent" disabled><span>▶</span>开服</button><button id="stop-server" disabled><span>■</span>关服</button></div>
+              <div class="map-secondary-actions"><button id="edit-server" disabled><span data-icon="edit"></span>属性</button><button id="backup-server" disabled><span data-icon="backup"></span>备份</button><button id="delete-map" disabled><span data-icon="delete"></span>删除</button></div>
+              <details class="environment-details"><summary>运行环境</summary><dl><dt>地图要求</dt><dd id="selected-version"></dd><dt>Java</dt><dd id="selected-java">自动匹配</dd></dl></details>
+            </div>
+          </aside>
+        </div>
+        <section class="console-dock" id="console-panel" role="tabpanel" hidden aria-label="服务器控制台"><div class="console-toolbar"><strong>控制台</strong><span id="console-instance">未启动服务器</span><button id="copy-log" title="复制可见日志">复制日志</button></div><pre id="console-log">等待启动服务器。</pre><form id="console-form"><span>›</span><input id="console-command" autocomplete="off" placeholder="输入服务端命令，例如 list（无需 /）" aria-label="服务端命令"><button id="console-send" disabled>发送</button></form></section>
+      </section>
+
+      <section id="view-versions" class="view">
+        <div class="command-bar"><strong>服务端版本</strong><span class="separator"></span><button id="refresh-versions">刷新列表</button><button id="import-jar">导入 JAR…</button><input id="filter-versions" class="toolbar-search" placeholder="搜索版本" type="search"></div>
+        <div class="page-content"><div class="section-title"><h2>已安装</h2><span class="muted">供各实例共用</span></div><div id="installed-list" class="installed-list"></div><div class="section-title"><h2>Mojang 官方版本</h2><label class="check"><input id="include-snapshots" type="checkbox">显示快照、预发布与候选版</label></div><p id="version-message" class="muted"></p><div id="download-list"></div><table class="data-table"><thead><tr><th>版本</th><th>类型</th><th class="action-column">操作</th></tr></thead><tbody id="version-rows"></tbody></table></div>
+      </section>
+
+      <section id="view-java" class="view">
+        <div class="command-bar"><strong>Java 环境</strong><span class="separator"></span><button id="scan-java">重新搜索</button><button class="browse-java" data-kind="java">浏览 java.exe…</button><button class="browse-java" data-kind="directory">扫描文件夹…</button></div>
+        <div class="page-content"><div class="info-strip"><span>ⓘ</span><div>开服时自动选择与 Minecraft 版本兼容的 Java。<small>优先参考官方元信息；高级兼容规则可在本地配置文件中调整。</small></div></div><div class="section-title"><h2>已发现的 Java</h2><span id="java-scan-message" class="muted"></span></div><table class="data-table"><thead><tr><th>版本</th><th>架构</th><th>位置</th></tr></thead><tbody id="java-rows"></tbody></table><p id="java-empty" class="muted" hidden>未发现合适环境。可以浏览选择 java.exe，或添加搜索文件夹。</p><div class="settings-note"><strong>搜索范围</strong><p>常见 Java 安装位置、Minecraft / 启动器运行时、JAVA_HOME、PATH 及你补充的文件夹。</p><p id="java-roots"></p><p id="java-rule-path"></p></div></div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="command-bar"><strong>设置</strong><span class="separator"></span><button id="save-settings" class="accent" form="settings-form">保存</button></div>
+        <form id="settings-form" class="page-content settings-page">
+          <h2>启动环境</h2>
+          <div class="setting-row"><div><label for="java-mode">Java 选择</label><small>自动模式按服务端要求匹配，无需每次选择路径。</small></div><select id="java-mode"><option value="auto">自动匹配（推荐）</option><option value="manual">手动固定 Java</option></select></div>
+          <div id="manual-java" class="setting-row" hidden><div><label for="pinned-java">固定环境</label><small>手动模式由你确认版本兼容性。</small></div><div class="setting-control"><select id="pinned-java"></select><button type="button" class="browse-java" data-kind="java">浏览…</button></div></div>
+          <div class="setting-row"><div><label for="memory">最大内存</label><small>每次启动服务器时使用。</small></div><div class="unit-input"><input id="memory" type="number" min="1" max="64" required><span>GB</span></div></div>
+          <div class="setting-row"><div><label for="game-port">游戏端口</label><small>同一时间仅运行一个实例。</small></div><input id="game-port" type="number" min="1024" max="65535" required></div>
+          <h2>开服配置</h2>
+          <p class="settings-section-note">以下设置统一用于所有地图，保存后下次开服生效。</p>
+          <div class="setting-row"><div><label for="online-mode">正版验证</label></div><label class="toggle-switch"><input id="online-mode" type="checkbox" role="switch" aria-label="正版验证"><span aria-hidden="true"></span></label></div>
+          <div class="setting-row"><div><label for="command-blocks">命令方块</label></div><label class="toggle-switch"><input id="command-blocks" type="checkbox" role="switch" aria-label="命令方块"><span aria-hidden="true"></span></label></div>
+          <div class="setting-row"><div><label for="allow-flight">允许飞行</label><small>不会自动授予飞行能力。</small></div><label class="toggle-switch"><input id="allow-flight" type="checkbox" role="switch" aria-label="允许飞行"><span aria-hidden="true"></span></label></div>
+          <h2>管理员</h2>
+          <p class="settings-section-note">开服时自动授权以下玩家 OP，所有地图共用这份名单。</p>
+          <div class="admin-box"><div id="admin-list" class="admin-list"></div><div class="admin-add"><input id="new-admin" placeholder="输入游戏名" maxlength="16" pattern="[A-Za-z0-9_]{1,16}" aria-label="新管理员游戏名"><button id="add-admin" type="button">＋ 添加</button></div></div>
+          <h2>协议与数据</h2><label class="check eula"><input id="accept-eula" type="checkbox">我已阅读并同意 <a href="https://www.minecraft.net/eula" target="_blank" rel="noreferrer">Minecraft EULA</a></label><div class="settings-note"><strong>数据位置</strong><p id="data-location"></p><p>关闭窗口时，程序会确认并等待服务端保存完成。请勿在保存过程中强制结束进程。</p></div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="import-dialog"><form id="import-form"><div class="dialog-title">导入地图<button type="button" class="icon-button close-dialog" data-dialog="import-dialog" aria-label="关闭">×</button></div><div class="dialog-content"><label>选择地图<select id="map-candidate"></select></label><label>地图名称<input id="map-name" required maxlength="100"></label><label>需要的 Minecraft 版本<input id="map-version" required placeholder="例如 26.3"></label><p id="map-version-hint" class="muted"></p><label>简介<textarea id="map-description" rows="3" maxlength="1000"></textarea></label><p class="muted">请确认作者要求的版本。存档最后保存版本不一定是最低兼容版本。</p></div><div class="dialog-actions"><button type="button" class="close-dialog" data-dialog="import-dialog">取消</button><button class="accent">导入</button></div></form></dialog>
+  <dialog id="properties-dialog"><form id="properties-form"><div class="dialog-title">地图属性<button type="button" class="icon-button close-dialog" data-dialog="properties-dialog" aria-label="关闭">×</button></div><div class="dialog-content"><input id="edit-id" type="hidden"><label>地图名称<input id="edit-name" required maxlength="100"></label><label>需要的 Minecraft 版本<input id="edit-version" required></label><label>简介<textarea id="edit-description" rows="4" maxlength="1000"></textarea></label><button type="button" id="choose-cover">更换地图图片…</button><p class="muted">更换版本前建议备份；不建议降级运行已经升级的存档。</p></div><div class="dialog-actions"><button type="button" class="close-dialog" data-dialog="properties-dialog">取消</button><button class="accent">保存</button></div></form></dialog>
+  <dialog id="delete-dialog"><form id="delete-form"><div class="dialog-title">删除地图</div><div class="dialog-content"><p id="delete-message"></p><p class="muted">完整地图和游玩进度将移到应用数据目录的 trash 文件夹；原始 ZIP 和共享服务端不会删除。</p><input id="delete-id" type="hidden"><input id="delete-name" type="hidden"></div><div class="dialog-actions"><button type="button" class="close-dialog" data-dialog="delete-dialog">取消</button><button class="accent">删除地图</button></div></form></dialog>
+  <datalist id="map-version-options"></datalist><input id="map-file" type="file" accept=".zip" hidden><input id="jar-file" type="file" accept=".jar" hidden><input id="cover-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+  <div id="busy-overlay" hidden><div class="busy-dialog"><span class="spinner"></span><strong id="busy-label">正在处理</strong><progress id="busy-progress" max="100"></progress></div></div>
+  <div id="notification" role="status" hidden></div>
+</body>
+</html>

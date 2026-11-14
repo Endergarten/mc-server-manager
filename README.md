@@ -93,6 +93,8 @@ go run . --data ./data --port 18180 --no-browser
 - `internal/platform/darwin/`、`internal/platform/linux/`：其他平台接入位置，当前预留。
 - `scripts/windows/`：Windows 构建和便携包脚本。
 
+应用图标源文件是 `frontend/windows/app-icon.svg`，Windows 多尺寸图标是 `winres/app-icon.ico`。修改 ICO 后运行 `scripts/windows/update-icon.ps1`，重新生成并提交 `rsrc_windows_amd64.syso`；正常构建直接使用已提交的资源，无需额外安装图标工具。资源 ID 3 同时用于窗口和任务栏。
+
 开服、导入、下载和 Java 匹配尽量使用跨平台代码。本次仅交付 Windows 10/11，macOS / Linux 桌面未适配与实机验证。
 
 ## 数据与限制
